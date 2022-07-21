@@ -6,14 +6,12 @@ import (
 	"path/filepath"
 
 	"os"
-	"runtime"
-	// "syscall"
 
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/opencontainers/runc/libcontainer"
-	_ "github.com/opencontainers/runc/libcontainer/nsenter"
+	"github.com/opencontainers/runtime-spec/specs-go"
 
 	"github.com/opencontainers/runc/libcontainer/specconv"
 )
@@ -52,38 +50,12 @@ func main() {
 		}
 		err = Untar(rootFs, r)
 		if err != nil {
-			log.Fatal("UnTar layer: %v", err)
+			log.Fatalf("UnTar layer: %v", err)
 		}
 	}
 
 
 	runContainer()
-	// cmd := reexec.Command("runContainer")
-	// cmd.SysProcAttr = &syscall.SysProcAttr{
-	// 	Cloneflags: syscall.CLONE_NEWNS |
-	// 		syscall.CLONE_NEWUTS |
-	// 		syscall.CLONE_NEWIPC |
-	// 		syscall.CLONE_NEWPID |
-	// 		syscall.CLONE_NEWNET |
-	// 		syscall.CLONE_NEWUSER,
-	// 	UidMappings: []syscall.SysProcIDMap{
-	// 		{
-	// 			ContainerID: 0,
-	// 			HostID:      os.Getuid(),
-	// 			Size:        1,
-	// 		},
-	// 	},
-	// 	GidMappings: []syscall.SysProcIDMap{
-	// 		{
-	// 			ContainerID: 0,
-	// 			HostID:      os.Getgid(),
-	// 			Size:        1,
-	// 		},
-	// 	},
-	// }
-	// if err := cmd.Start(); err != nil {
-	// 	log.Fatalf("Error starting the reexec.Command - %v\n", err)
-	// }
 }
 
 func runContainer() {
@@ -93,9 +65,9 @@ func runContainer() {
 		log.Fatalf("creating container: %v", err)
 	}
 	proc := &libcontainer.Process{
-		Args:   []string{"/bin/ls", "/"},
+		Args:   []string{"/bin/ps"},
 		Env:    []string{"PATH=/bin"},
-		User:   "0",
+		User:   "root",
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
@@ -110,30 +82,21 @@ func runContainer() {
 
 func createContainer() (libcontainer.Container, error) {
 	spec := specconv.Example()
+	specconv.ToRootless(spec)
 	spec.Root.Path = rootFs
-	factory, err := libcontainer.New(containerDir, libcontainer.InitArgs(os.Args[0], "init"))
-	if err != nil {
-		return nil, err
-	}
 	config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
 		Spec:         spec,
 		RootlessEUID: os.Geteuid() != 0,
+		RootlessCgroups: true,
+		CgroupName: "yeet",
 	})
+	if err != nil {
+		return nil, err
+	}
+	factory, err := libcontainer.New(containerDir, libcontainer.InitArgs(os.Args[0], "init"))
 	if err != nil {
 		return nil, err
 	}
 	return factory.Create("container-id", config)
 }
 
-func init() {
-	// reexec.Register("runContainer", runContainer)
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		runtime.GOMAXPROCS(1)
-		runtime.LockOSThread()
-		factory, _ := libcontainer.New("")
-		if err := factory.StartInitialization(); err != nil {
-			log.Fatal(err)
-		}
-		panic("--this line should have never been executed, congratulations--")
-	}
-}
