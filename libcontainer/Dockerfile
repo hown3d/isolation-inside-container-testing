@@ -4,6 +4,7 @@ ENV CGO_ENABLED=1
 
 WORKDIR /workspace
 COPY . .
+WORKDIR /workspace/libcontainer
 RUN \
   --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg \
